@@ -7,25 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum EmployeeArea {
-  KASSE
-  BISTRO
-  LAGER
-  WERKSTATT
-}
-
-enum EmploymentType {
-  ANGESTELLTER
-  AUSHILFE
-}
-
 model Employee {
-  id                  Int             @id @default(autoincrement())
+  id                  Int      @id @default(autoincrement())
   name                String
   monthlyHours        Int
-  area                EmployeeArea
-  employmentType      EmploymentType
-  availableWeekdays   Json
-  weekendAvailability Boolean         @default(false)
-  createdAt           DateTime        @default(now())
+  area                String
+  employmentType      String
+  availableWeekdays   String   @default("[]")
+  weekendAvailability Boolean  @default(false)
+  createdAt           DateTime @default(now())
 }

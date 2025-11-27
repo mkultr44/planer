@@ -1,21 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateSchedule, type SchedulerEmployee } from "@/lib/scheduler";
-
-const normalizeWeekdays = (values: unknown): number[] => {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  const normalized = new Set<number>();
-  values.forEach((value) => {
-    const numeric = Number(value);
-    if (!Number.isNaN(numeric)) {
-      const normalizedValue = ((numeric % 7) + 7) % 7;
-      normalized.add(normalizedValue);
-    }
-  });
-  return Array.from(normalized);
-};
+import { parseStoredWeekdays } from "@/lib/weekdays";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -28,7 +14,7 @@ export async function GET(request: NextRequest) {
     monthlyHours: employee.monthlyHours,
     area: employee.area,
     employmentType: employee.employmentType,
-    availableWeekdays: normalizeWeekdays(employee.availableWeekdays),
+    availableWeekdays: parseStoredWeekdays(employee.availableWeekdays),
     weekendAvailability: employee.weekendAvailability
   }));
 

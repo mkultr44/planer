@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { EmployeeArea, EmploymentType } from "@prisma/client";
+import { EMPLOYEE_AREA, EMPLOYMENT_TYPE, type EmployeeAreaValue, type EmploymentTypeValue } from "@/types";
 import { createHolidaySet, isNRWHoliday } from "./holidays";
 
 const WEEKDAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"] as const;
@@ -25,16 +25,16 @@ const WEEKEND_SHIFTS: ShiftTemplate[] = [
   { id: "WE-3", label: "Spätdienst", start: "18:00", end: "22:00", hours: 4 }
 ];
 
-const AREA_LABELS: Record<Exclude<EmployeeArea, EmployeeArea.KASSE>, string> = {
-  [EmployeeArea.BISTRO]: "Bistro-Tagesdienst",
-  [EmployeeArea.LAGER]: "Lager-Einsatz",
-  [EmployeeArea.WERKSTATT]: "Werkstatt-Einsatz"
+const AREA_LABELS: Record<Exclude<EmployeeAreaValue, typeof EMPLOYEE_AREA.KASSE>, string> = {
+  [EMPLOYEE_AREA.BISTRO]: "Bistro-Tagesdienst",
+  [EMPLOYEE_AREA.LAGER]: "Lager-Einsatz",
+  [EMPLOYEE_AREA.WERKSTATT]: "Werkstatt-Einsatz"
 };
 
-const NON_CASHIER_AREAS: Array<Exclude<EmployeeArea, EmployeeArea.KASSE>> = [
-  EmployeeArea.BISTRO,
-  EmployeeArea.LAGER,
-  EmployeeArea.WERKSTATT
+const NON_CASHIER_AREAS: Array<Exclude<EmployeeAreaValue, typeof EMPLOYEE_AREA.KASSE>> = [
+  EMPLOYEE_AREA.BISTRO,
+  EMPLOYEE_AREA.LAGER,
+  EMPLOYEE_AREA.WERKSTATT
 ];
 
 const WORKDAY_AREA_HOURS = 8;
@@ -44,8 +44,8 @@ export interface SchedulerEmployee {
   id: number;
   name: string;
   monthlyHours: number;
-  area: EmployeeArea;
-  employmentType: EmploymentType;
+  area: EmployeeAreaValue;
+  employmentType: EmploymentTypeValue;
   availableWeekdays: number[]; // 0 = Sonntag ... 6 = Samstag
   weekendAvailability: boolean;
 }
@@ -63,13 +63,13 @@ export type ShiftKind = "CASHIER" | "AREA";
 export interface AssignedEmployee {
   id: number;
   name: string;
-  employmentType: EmploymentType;
+  employmentType: EmploymentTypeValue;
 }
 
 export interface ShiftAssignment {
   id: string;
   kind: ShiftKind;
-  area: EmployeeArea;
+  area: EmployeeAreaValue;
   label: string;
   start: string | null;
   end: string | null;
@@ -192,7 +192,7 @@ export function generateSchedule(
         scheduleDay.shifts.push({
           id: `${isoDate}-cashier-${template.id}`,
           kind: "CASHIER",
-          area: EmployeeArea.KASSE,
+          area: EMPLOYEE_AREA.KASSE,
           label: `Kasse ${template.label}`,
           start: template.start,
           end: template.end,
@@ -215,7 +215,7 @@ export function generateSchedule(
         scheduleDay.shifts.push({
           id: `${isoDate}-cashier-${template.id}`,
           kind: "CASHIER",
-          area: EmployeeArea.KASSE,
+          area: EMPLOYEE_AREA.KASSE,
           label: `Kasse ${template.label}`,
           start: template.start,
           end: template.end,
@@ -227,7 +227,7 @@ export function generateSchedule(
     });
 
     NON_CASHIER_AREAS.forEach((areaKey) => {
-      if (areaKey === EmployeeArea.WERKSTATT && weekendOrHoliday) {
+      if (areaKey === EMPLOYEE_AREA.WERKSTATT && weekendOrHoliday) {
         scheduleDay.shifts.push({
           id: `${isoDate}-${areaKey}-closed`,
           kind: "AREA",
@@ -361,7 +361,7 @@ function selectCashierEmployee(
   employees: MutableEmployee[],
   context: CashierSelectionContext
 ) {
-  const relevant = employees.filter((employee) => employee.area === EmployeeArea.KASSE);
+  const relevant = employees.filter((employee) => employee.area === EMPLOYEE_AREA.KASSE);
 
   let candidates = relevant.filter((employee) => {
     if (employee.remainingHours < context.shift.hours) {
@@ -381,7 +381,7 @@ function selectCashierEmployee(
   }
 
   const preferred = candidates.filter((employee) => {
-    if (employee.employmentType !== EmploymentType.AUSHILFE) {
+    if (employee.employmentType !== EMPLOYMENT_TYPE.AUSHILFE) {
       return true;
     }
     if (employee.lastCashierDay === null) {
@@ -395,7 +395,7 @@ function selectCashierEmployee(
     const spacingA = a.lastCashierDay === null ? Number.POSITIVE_INFINITY : context.dayNumber - a.lastCashierDay;
     const spacingB = b.lastCashierDay === null ? Number.POSITIVE_INFINITY : context.dayNumber - b.lastCashierDay;
 
-    if (a.employmentType === EmploymentType.AUSHILFE || b.employmentType === EmploymentType.AUSHILFE) {
+    if (a.employmentType === EMPLOYMENT_TYPE.AUSHILFE || b.employmentType === EMPLOYMENT_TYPE.AUSHILFE) {
       if (spacingA !== spacingB) {
         return spacingB - spacingA;
       }
@@ -421,7 +421,7 @@ interface AreaSelectionContext {
   assignmentsToday: Set<number>;
   weekendOrHoliday: boolean;
   slotHours: number;
-  area: Exclude<EmployeeArea, EmployeeArea.KASSE>;
+  area: Exclude<EmployeeAreaValue, typeof EMPLOYEE_AREA.KASSE>;
 }
 
 function selectAreaEmployee(
