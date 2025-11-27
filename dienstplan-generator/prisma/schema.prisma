@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum EmployeeArea {
+  KASSE
+  BISTRO
+  LAGER
+  WERKSTATT
+}
+
+enum EmploymentType {
+  ANGESTELLTER
+  AUSHILFE
+}
+
+model Employee {
+  id                  Int             @id @default(autoincrement())
+  name                String
+  monthlyHours        Int
+  area                EmployeeArea
+  employmentType      EmploymentType
+  availableWeekdays   Json
+  weekendAvailability Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+}
