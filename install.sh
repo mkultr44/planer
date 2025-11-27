@@ -11,6 +11,7 @@ PROJECT_NAME="dienstplan-generator"
 SYSTEMD_SERVICE_NAME="${PROJECT_NAME}.service"
 DEFAULT_APP_PORT=4310
 DEFAULT_SYSTEM_USER="dienstplan"
+CONFIG_FILE="$PROJECT_DIR/$PROJECT_NAME/.install-config"
 
 prompt() {
   local prompt_text=$1
@@ -28,10 +29,36 @@ prompt() {
   fi
 }
 
-DOMAIN=$(prompt "Domain für die Anwendung (z. B. plan.example.com)")
-ADMIN_EMAIL=$(prompt "E-Mail-Adresse für Let's Encrypt Benachrichtigungen")
-APP_PORT=$(prompt "Interner Port für Next.js (nicht 80/443, Standard ${DEFAULT_APP_PORT})" "$DEFAULT_APP_PORT")
-SYSTEM_USER=$(prompt "Systembenutzer für den Dienst" "$DEFAULT_SYSTEM_USER")
+load_previous_config() {
+  if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1091
+    source "$CONFIG_FILE"
+  fi
+}
+
+save_config() {
+  cat >"$CONFIG_FILE" <<CFG
+DOMAIN="$DOMAIN"
+ADMIN_EMAIL="$ADMIN_EMAIL"
+APP_PORT="$APP_PORT"
+SYSTEM_USER="$SYSTEM_USER"
+CFG
+}
+
+stop_existing_service() {
+  if systemctl status "$SYSTEMD_SERVICE_NAME" >/dev/null 2>&1; then
+    systemctl stop "$SYSTEMD_SERVICE_NAME" || true
+  fi
+}
+
+load_previous_config
+
+DOMAIN=$(prompt "Domain für die Anwendung (z. B. plan.example.com)" "${DOMAIN-}")
+ADMIN_EMAIL=$(prompt "E-Mail-Adresse für Let's Encrypt Benachrichtigungen" "${ADMIN_EMAIL-}")
+APP_PORT=$(prompt "Interner Port für Next.js (nicht 80/443, Standard ${DEFAULT_APP_PORT})" "${APP_PORT:-$DEFAULT_APP_PORT}")
+SYSTEM_USER=$(prompt "Systembenutzer für den Dienst" "${SYSTEM_USER:-$DEFAULT_SYSTEM_USER}")
+
+save_config
 
 if ! id -u "$SYSTEM_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin "$SYSTEM_USER"
@@ -50,6 +77,8 @@ if ! command -v node >/dev/null 2>&1 || [[ $(node -v | sed 's/v//;s/\..*//') -lt
 fi
 
 cd "$PROJECT_DIR/$PROJECT_NAME"
+
+stop_existing_service
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
@@ -111,6 +140,7 @@ certbot --nginx \
   --non-interactive \
   --agree-tos \
   --email "$ADMIN_EMAIL" \
+  --reinstall \
   -d "$DOMAIN"
 
 systemctl restart nginx

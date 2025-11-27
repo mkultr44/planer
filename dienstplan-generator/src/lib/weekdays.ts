@@ -7,7 +7,7 @@ const clampWeekday = (value: unknown): number | null => {
   return normalized;
 };
 
-export const normalizeWeekdays = (values: Iterable<unknown>): number[] => {
+export const normalizeWeekdays = (values: readonly unknown[]): number[] => {
   const normalized = new Set<number>();
   for (const value of values) {
     const weekday = clampWeekday(value);
@@ -18,7 +18,7 @@ export const normalizeWeekdays = (values: Iterable<unknown>): number[] => {
   return Array.from(normalized);
 };
 
-export const serializeWeekdays = (values: Iterable<unknown>): string => {
+export const serializeWeekdays = (values: readonly unknown[]): string => {
   return JSON.stringify(normalizeWeekdays(values));
 };
 

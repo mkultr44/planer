@@ -14,6 +14,14 @@ export const EMPLOYMENT_TYPE = {
 } as const;
 export type EmploymentTypeValue = (typeof EMPLOYMENT_TYPES)[number];
 
+export const isEmployeeAreaValue = (value: unknown): value is EmployeeAreaValue => {
+  return typeof value === "string" && (EMPLOYEE_AREAS as readonly string[]).includes(value);
+};
+
+export const isEmploymentTypeValue = (value: unknown): value is EmploymentTypeValue => {
+  return typeof value === "string" && (EMPLOYMENT_TYPES as readonly string[]).includes(value);
+};
+
 export interface EmployeeDto {
   id: number;
   name: string;
