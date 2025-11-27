@@ -12,6 +12,9 @@ SYSTEMD_SERVICE_NAME="${PROJECT_NAME}.service"
 DEFAULT_APP_PORT=4310
 DEFAULT_SYSTEM_USER="dienstplan"
 CONFIG_FILE="$PROJECT_DIR/$PROJECT_NAME/.install-config"
+HTPASSWD_FILE="/etc/nginx/.htpasswd_${PROJECT_NAME}"
+BASIC_AUTH_USER="vt"
+BASIC_AUTH_PASSWORD="58Rwf62a7NKX"
 
 prompt() {
   local prompt_text=$1
@@ -94,6 +97,10 @@ runuser -u "$SYSTEM_USER" -- bash -c "
   npm run build
 "
 
+htpasswd -b -c "$HTPASSWD_FILE" "$BASIC_AUTH_USER" "$BASIC_AUTH_PASSWORD"
+chmod 640 "$HTPASSWD_FILE"
+chown root:www-data "$HTPASSWD_FILE"
+
 cat <<SERVICE >/etc/systemd/system/$SYSTEMD_SERVICE_NAME
 [Unit]
 Description=Dienstplan Generator Next.js Service
@@ -150,10 +157,3 @@ systemctl restart nginx
 systemctl status "$SYSTEMD_SERVICE_NAME" --no-pager
 
 echo "Installation abgeschlossen. Anwendung läuft hinter https://$DOMAIN"
-HTPASSWD_FILE="/etc/nginx/.htpasswd_${PROJECT_NAME}"
-BASIC_AUTH_USER="vt"
-BASIC_AUTH_PASSWORD="58Rwf62a7NKX"
-
-htpasswd -b -c "$HTPASSWD_FILE" "$BASIC_AUTH_USER" "$BASIC_AUTH_PASSWORD"
-chmod 640 "$HTPASSWD_FILE"
-chown root:www-data "$HTPASSWD_FILE"
