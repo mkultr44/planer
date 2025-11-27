@@ -65,7 +65,7 @@ if ! id -u "$SYSTEM_USER" >/dev/null 2>&1; then
 fi
 
 apt-get update
-apt-get install -y ca-certificates curl gnupg sqlite3 build-essential nginx python3-certbot-nginx git sudo
+apt-get install -y ca-certificates curl gnupg sqlite3 build-essential nginx python3-certbot-nginx git sudo apache2-utils
 
 if ! command -v node >/dev/null 2>&1 || [[ $(node -v | sed 's/v//;s/\..*//') -lt 18 ]]; then
   install -m 0755 -d /etc/apt/keyrings
@@ -123,6 +123,9 @@ server {
     server_name $DOMAIN;
 
     location / {
+        auth_basic "Passwort erforderlich";
+        auth_basic_user_file $HTPASSWD_FILE;
+
         proxy_pass http://127.0.0.1:$APP_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -147,3 +150,10 @@ systemctl restart nginx
 systemctl status "$SYSTEMD_SERVICE_NAME" --no-pager
 
 echo "Installation abgeschlossen. Anwendung läuft hinter https://$DOMAIN"
+HTPASSWD_FILE="/etc/nginx/.htpasswd_${PROJECT_NAME}"
+BASIC_AUTH_USER="vt"
+BASIC_AUTH_PASSWORD="58Rwf62a7NKX"
+
+htpasswd -b -c "$HTPASSWD_FILE" "$BASIC_AUTH_USER" "$BASIC_AUTH_PASSWORD"
+chmod 640 "$HTPASSWD_FILE"
+chown root:www-data "$HTPASSWD_FILE"
