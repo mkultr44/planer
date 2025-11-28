@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CreateEmployeePayload, EmployeeAreaValue, EmploymentTypeValue } from "@/types";
+import { CASHIER_SHIFT_OPTIONS, type CashierShiftId } from "@/lib/shifts";
 
 const AREA_OPTIONS: { label: string; value: EmployeeAreaValue; description: string }[] = [
   { label: "Kasse", value: "KASSE", description: "Fixe Schichten laut Vorgaben" },
@@ -23,6 +24,16 @@ const WEEKDAY_OPTIONS = [
   { label: "Fr", value: 5 }
 ];
 
+const FIXED_SHIFT_WEEKDAY_OPTIONS = [
+  { label: "So", value: 0 },
+  { label: "Mo", value: 1 },
+  { label: "Di", value: 2 },
+  { label: "Mi", value: 3 },
+  { label: "Do", value: 4 },
+  { label: "Fr", value: 5 },
+  { label: "Sa", value: 6 }
+];
+
 interface Props {
   onCreated?: () => void;
 }
@@ -34,14 +45,33 @@ export function EmployeeForm({ onCreated }: Props) {
     area: "KASSE",
     employmentType: "ANGESTELLTER",
     availableWeekdays: [1, 2, 3, 4, 5],
-    weekendAvailability: false
+    weekendAvailability: false,
+    fixedCashierSlots: []
   });
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>(formState.availableWeekdays);
+  const [fixedCashierDays, setFixedCashierDays] = useState<number[]>([]);
+  const [fixedShiftId, setFixedShiftId] = useState<CashierShiftId>("W-2");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const eligibleForFixedShift = formState.area === "KASSE" && formState.employmentType === "ANGESTELLTER";
+
+  useEffect(() => {
+    if (!eligibleForFixedShift) {
+      setFixedCashierDays([]);
+    }
+  }, [eligibleForFixedShift]);
 
   const toggleWeekday = (value: number) => {
     setSelectedWeekdays((prev) => {
+      if (prev.includes(value)) {
+        return prev.filter((day) => day !== value);
+      }
+      return [...prev, value];
+    });
+  };
+
+  const toggleFixedDay = (value: number) => {
+    setFixedCashierDays((prev) => {
       if (prev.includes(value)) {
         return prev.filter((day) => day !== value);
       }
@@ -57,7 +87,11 @@ export function EmployeeForm({ onCreated }: Props) {
     const payload: CreateEmployeePayload = {
       ...formState,
       monthlyHours: Number(formState.monthlyHours),
-      availableWeekdays: selectedWeekdays
+      availableWeekdays: selectedWeekdays,
+      fixedCashierSlots:
+        eligibleForFixedShift && fixedCashierDays.length
+          ? fixedCashierDays.map((weekday) => ({ weekday, shiftId: fixedShiftId }))
+          : []
     };
 
     if (!payload.availableWeekdays.length) {
@@ -81,6 +115,8 @@ export function EmployeeForm({ onCreated }: Props) {
       setFeedback({ type: "success", message: "Mitarbeiter:in wurde gespeichert." });
       setFormState((prev) => ({ ...prev, name: "" }));
       setSelectedWeekdays(payload.availableWeekdays);
+      setFixedCashierDays([]);
+      setFixedShiftId("W-2");
       onCreated?.();
     } catch (error) {
       setFeedback({ type: "error", message: (error as Error).message });
@@ -203,6 +239,52 @@ export function EmployeeForm({ onCreated }: Props) {
           />
           Auch an Wochenenden & NRW-Feiertagen verfügbar
         </label>
+
+        {eligibleForFixedShift && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">Feste Kassenschichten</p>
+                <p className="text-xs text-slate-500">Nur für Angestellte in der Kasse.</p>
+              </div>
+              <select
+                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                value={fixedShiftId}
+                onChange={(event) => setFixedShiftId(event.target.value as CashierShiftId)}
+              >
+                {CASHIER_SHIFT_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {FIXED_SHIFT_WEEKDAY_OPTIONS.map((weekday) => (
+                <label
+                  key={weekday.value}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    fixedCashierDays.includes(weekday.value)
+                      ? "border-brand-500 bg-brand-500/10 text-brand-700"
+                      : "border-slate-300 text-slate-600"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={fixedCashierDays.includes(weekday.value)}
+                    onChange={() => toggleFixedDay(weekday.value)}
+                  />
+                  {weekday.label}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">
+              Beispiel: Mo, Di, Mi + Mittelschicht = feste Zuordnung zu diesen Schichten. Wochenend-Tage erfordern
+              zusätzlich die Wochenend-Checkbox oben.
+            </p>
+          </div>
+        )}
 
         {feedback && (
           <div

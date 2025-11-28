@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parseStoredFixedCashierSlots } from "@/lib/fixed-shifts";
 import { generateSchedule, type SchedulerEmployee } from "@/lib/scheduler";
 import { parseStoredWeekdays } from "@/lib/weekdays";
-import { isEmployeeAreaValue, isEmploymentTypeValue } from "@/types";
+import { EMPLOYEE_AREA, EMPLOYMENT_TYPE, isEmployeeAreaValue, isEmploymentTypeValue } from "@/types";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -22,7 +23,11 @@ export async function GET(request: NextRequest) {
         area: employee.area,
         employmentType: employee.employmentType,
         availableWeekdays: parseStoredWeekdays(employee.availableWeekdays),
-        weekendAvailability: employee.weekendAvailability
+        weekendAvailability: employee.weekendAvailability,
+        fixedCashierSlots:
+          employee.area === EMPLOYEE_AREA.KASSE && employee.employmentType === EMPLOYMENT_TYPE.ANGESTELLTER
+            ? parseStoredFixedCashierSlots(employee.fixedCashierSlots)
+            : []
       };
       return schedulerEmployee;
     })

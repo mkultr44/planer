@@ -1,8 +1,11 @@
+import { useMemo, useState } from "react";
+import type { EmployeeDto } from "@/types";
 import type { GeneratedScheduleDto } from "@/types/schedule";
 
 interface Props {
   schedule: GeneratedScheduleDto | null;
   isLoading?: boolean;
+  employees: EmployeeDto[];
 }
 
 const TYPE_COLORS: Record<GeneratedScheduleDto["days"][number]["type"], string> = {
@@ -17,7 +20,9 @@ const STATUS_BADGES: Record<string, string> = {
   CLOSED: "bg-slate-100 text-slate-500"
 };
 
-export function SchedulePreview({ schedule, isLoading }: Props) {
+export function SchedulePreview({ schedule, isLoading, employees }: Props) {
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<"all" | number>("all");
+
   if (isLoading) {
     return (
       <div className="card">
@@ -38,6 +43,23 @@ export function SchedulePreview({ schedule, isLoading }: Props) {
     );
   }
 
+  const employeeLookup = useMemo(() => {
+    return new Map<number, EmployeeDto>(employees.map((employee) => [employee.id, employee]));
+  }, [employees]);
+
+  const daysToShow = useMemo(() => {
+    if (!schedule) return [];
+    if (selectedEmployeeId === "all") {
+      return schedule.days;
+    }
+    return schedule.days
+      .map((day) => ({
+        ...day,
+        shifts: day.shifts.filter((shift) => shift.employee?.id === selectedEmployeeId)
+      }))
+      .filter((day) => day.shifts.length > 0);
+  }, [schedule, selectedEmployeeId]);
+
   return (
     <div className="card">
       <div className="card-header flex flex-col gap-1">
@@ -50,6 +72,35 @@ export function SchedulePreview({ schedule, isLoading }: Props) {
         </span>
       </div>
       <div className="card-body flex flex-col gap-6">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <label className="text-slate-700">
+            Anzeige für
+            <select
+              className="ml-2 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+              value={selectedEmployeeId === "all" ? "all" : selectedEmployeeId}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSelectedEmployeeId(value === "all" ? "all" : Number(value));
+              }}
+            >
+              <option value="all">Gesamtes Team</option>
+              {employees
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name, "de"))
+                .map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          {selectedEmployeeId !== "all" && (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              Zeige nur zugeordnete Schichten
+            </span>
+          )}
+        </div>
+
         <div className="grid gap-3 md:grid-cols-2">
           <SummaryTile
             title="Kasse"
@@ -74,8 +125,15 @@ export function SchedulePreview({ schedule, isLoading }: Props) {
           </div>
         )}
 
+        {selectedEmployeeId !== "all" && daysToShow.length === 0 && (
+          <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">
+            Keine Schichten für{" "}
+            {employeeLookup.get(selectedEmployeeId)?.name ?? "diese Person"} im ausgewählten Monat.
+          </div>
+        )}
+
         <div className="flex flex-col gap-4">
-          {schedule.days.map((day) => (
+          {daysToShow.map((day) => (
             <div key={day.dateISO} className="rounded-2xl border border-slate-100 bg-slate-50/60">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                 <div>

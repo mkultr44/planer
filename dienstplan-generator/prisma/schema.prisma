@@ -15,5 +15,6 @@ model Employee {
   employmentType      String
   availableWeekdays   String   @default("[]")
   weekendAvailability Boolean  @default(false)
+  fixedCashierSlots   String   @default("[]")
   createdAt           DateTime @default(now())
 }

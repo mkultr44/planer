@@ -1,4 +1,4 @@
-const clampWeekday = (value: unknown): number | null => {
+export const clampWeekday = (value: unknown): number | null => {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) {
     return null;
