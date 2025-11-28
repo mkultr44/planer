@@ -8,10 +8,11 @@ fi
 
 PROJECT_DIR=$(cd "$(dirname "$0")" && pwd)
 PROJECT_NAME="dienstplan-generator"
+PROJECT_PATH="$PROJECT_DIR/$PROJECT_NAME"
 SYSTEMD_SERVICE_NAME="${PROJECT_NAME}.service"
 DEFAULT_APP_PORT=4310
 DEFAULT_SYSTEM_USER="dienstplan"
-CONFIG_FILE="$PROJECT_DIR/$PROJECT_NAME/.install-config"
+CONFIG_FILE="$PROJECT_PATH/.install-config"
 HTPASSWD_FILE="/etc/nginx/.htpasswd_${PROJECT_NAME}"
 BASIC_AUTH_USER="vt"
 BASIC_AUTH_PASSWORD="58Rwf62a7NKX"
@@ -54,6 +55,11 @@ stop_existing_service() {
   fi
 }
 
+if [[ ! -d "$PROJECT_PATH" ]]; then
+  echo "Projektverzeichnis \"$PROJECT_PATH\" wurde nicht gefunden." >&2
+  exit 1
+fi
+
 load_previous_config
 
 DOMAIN=$(prompt "Domain für die Anwendung (z. B. plan.example.com)" "${DOMAIN-}")
@@ -67,8 +73,22 @@ if ! id -u "$SYSTEM_USER" >/dev/null 2>&1; then
   useradd --system --create-home --shell /usr/sbin/nologin "$SYSTEM_USER"
 fi
 
+REQUIRED_APT_PACKAGES=(
+  ca-certificates
+  curl
+  gnupg
+  sqlite3
+  build-essential
+  nginx
+  python3-certbot-nginx
+  git
+  sudo
+  apache2-utils
+)
+
 apt-get update
-apt-get install -y ca-certificates curl gnupg sqlite3 build-essential nginx python3-certbot-nginx git sudo apache2-utils
+apt-get install -y "${REQUIRED_APT_PACKAGES[@]}"
+systemctl enable --now nginx
 
 if ! command -v node >/dev/null 2>&1 || [[ $(node -v | sed 's/v//;s/\..*//') -lt 18 ]]; then
   install -m 0755 -d /etc/apt/keyrings
@@ -79,7 +99,7 @@ if ! command -v node >/dev/null 2>&1 || [[ $(node -v | sed 's/v//;s/\..*//') -lt
   apt-get install -y nodejs
 fi
 
-cd "$PROJECT_DIR/$PROJECT_NAME"
+cd "$PROJECT_PATH"
 
 stop_existing_service
 
@@ -87,14 +107,15 @@ if [[ ! -f .env ]]; then
   cp .env.example .env
 fi
 
-chown -R "$SYSTEM_USER":"$SYSTEM_USER" "$PROJECT_DIR/$PROJECT_NAME"
+chown -R "$SYSTEM_USER":"$SYSTEM_USER" "$PROJECT_PATH"
 
 runuser -u "$SYSTEM_USER" -- bash -c "
-  cd \"$PROJECT_DIR/$PROJECT_NAME\" &&
-  npm install &&
+  set -euo pipefail
+  cd \"$PROJECT_PATH\" &&
+  npm ci &&
   npx prisma generate &&
   (npx prisma migrate deploy || npx prisma db push) &&
-  npm run build
+  NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 npm run build
 "
 
 htpasswd -b -c "$HTPASSWD_FILE" "$BASIC_AUTH_USER" "$BASIC_AUTH_PASSWORD"
@@ -109,10 +130,13 @@ After=network.target
 [Service]
 Type=simple
 User=$SYSTEM_USER
-WorkingDirectory=$PROJECT_DIR/$PROJECT_NAME
+WorkingDirectory=$PROJECT_PATH
+EnvironmentFile=$PROJECT_PATH/.env
 Environment=PORT=$APP_PORT
 Environment=NODE_ENV=production
-ExecStart=$PROJECT_DIR/$PROJECT_NAME/node_modules/.bin/next start -p $APP_PORT
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStartPre=$PROJECT_PATH/node_modules/.bin/prisma migrate deploy
+ExecStart=$PROJECT_PATH/node_modules/.bin/next start -p $APP_PORT
 Restart=always
 RestartSec=5
 
@@ -138,6 +162,9 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
     }
 }

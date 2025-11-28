@@ -176,7 +176,9 @@ export function generateSchedule(
       shifts: []
     };
 
-    const cashierTemplates = weekendOrHoliday ? CASHIER_WEEKEND_SHIFTS : CASHIER_WEEKDAY_SHIFTS;
+    const cashierTemplates: readonly ShiftTemplate[] = weekendOrHoliday
+      ? CASHIER_WEEKEND_SHIFTS
+      : CASHIER_WEEKDAY_SHIFTS;
 
     cashierTemplates.forEach((template, index) => {
       summary.totalCashierShifts += 1;
