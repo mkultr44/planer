@@ -1,3 +1,4 @@
+import { getCashierShiftById } from "@/lib/shifts";
 import type { EmployeeDto } from "@/types";
 
 const WEEKDAY_LOOKUP: Record<number, string> = {
@@ -27,6 +28,21 @@ const AREA_LABELS: Record<EmployeeDto["area"], string> = {
 const TYPE_LABELS: Record<EmployeeDto["employmentType"], string> = {
   ANGESTELLTER: "Angestellte:r",
   AUSHILFE: "Aushilfe"
+};
+
+const formatFixedShifts = (employee: EmployeeDto) => {
+  if (!employee.fixedCashierSlots.length) {
+    return "-";
+  }
+  const sorted = employee.fixedCashierSlots
+    .slice()
+    .sort((a, b) => weekdayOrder(a.weekday) - weekdayOrder(b.weekday));
+  const slot = sorted[0];
+  const shift = getCashierShiftById(slot.shiftId);
+  const weekdays = sorted
+    .map((entry) => WEEKDAY_LOOKUP[entry.weekday] ?? "?")
+    .join(", ");
+  return `${weekdays}${shift ? ` · ${shift.label}` : ""}`;
 };
 
 interface Props {
@@ -68,6 +84,7 @@ export function EmployeeList({ employees, isLoading }: Props) {
               <th className="px-6 py-3">Stunden/Monat</th>
               <th className="px-6 py-3">Wochentage</th>
               <th className="px-6 py-3">Wochenende</th>
+              <th className="px-6 py-3">Feste Kassenschichten</th>
             </tr>
           </thead>
           <tbody>
@@ -105,6 +122,7 @@ export function EmployeeList({ employees, isLoading }: Props) {
                     </span>
                   )}
                 </td>
+                <td className="px-6 py-4 text-slate-600">{formatFixedShifts(employee)}</td>
               </tr>
             ))}
           </tbody>
