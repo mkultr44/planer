@@ -195,10 +195,10 @@ export function EmployeeList({ employees, isLoading, onChange }: Props) {
                 </td>
                 <td className="px-6 py-4 text-slate-600">{formatFixedShifts(employee)}</td>
                 <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-1">
+                  <div className="flex flex-wrap justify-end gap-2">
                     <button
                       type="button"
-                      className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-brand-700"
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-brand-500 hover:text-brand-700"
                       aria-label={`Mitarbeiter:in ${employee.name} bearbeiten`}
                       title="Bearbeiten"
                       onClick={() => {
@@ -207,16 +207,18 @@ export function EmployeeList({ employees, isLoading, onChange }: Props) {
                       }}
                     >
                       <EditIcon />
+                      Bearbeiten
                     </button>
                     <button
                       type="button"
-                      className="rounded-full p-2 text-rose-600 transition hover:bg-rose-50"
+                      className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label={`Mitarbeiter:in ${employee.name} löschen`}
                       title="Löschen"
                       onClick={() => handleDelete(employee)}
                       disabled={deletingId === employee.id}
                     >
                       <TrashIcon />
+                      Löschen
                     </button>
                   </div>
                 </td>

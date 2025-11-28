@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CreateEmployeePayload, EmployeeAreaValue, EmployeeDto, EmploymentTypeValue } from "@/types";
-import { CASHIER_SHIFT_OPTIONS, type CashierShiftId } from "@/lib/shifts";
+import type {
+  CreateEmployeePayload,
+  EmployeeAreaValue,
+  EmployeeDto,
+  EmploymentTypeValue,
+  FixedCashierSlot
+} from "@/types";
+import { type CashierShiftId } from "@/lib/shifts";
 
 const AREA_OPTIONS: { label: string; value: EmployeeAreaValue; description: string }[] = [
   { label: "Kasse", value: "KASSE", description: "Fixe Schichten laut Vorgaben" },
@@ -33,6 +39,46 @@ const FIXED_SHIFT_WEEKDAY_OPTIONS = [
   { label: "Fr", value: 5 },
   { label: "Sa", value: 6 }
 ];
+
+const SHIFT_GRID_ROWS: Array<{
+  id: string;
+  label: string;
+  shortLabel: string;
+  weekdayShiftId: CashierShiftId;
+  weekendShiftId: CashierShiftId;
+  detail: string;
+}> = [
+  {
+    id: "early",
+    label: "Frühdienst",
+    shortLabel: "Früh",
+    weekdayShiftId: "W-1",
+    weekendShiftId: "WE-1",
+    detail: "Mo-Fr: 06:00-13:00 · Sa/So: 07:00-13:00"
+  },
+  {
+    id: "mid",
+    label: "Mittelschicht",
+    shortLabel: "Mittel",
+    weekdayShiftId: "W-2",
+    weekendShiftId: "WE-2",
+    detail: "Mo-Fr: 13:00-18:00 · Sa/So: 13:00-18:00"
+  },
+  {
+    id: "late",
+    label: "Spätdienst",
+    shortLabel: "Spät",
+    weekdayShiftId: "W-3",
+    weekendShiftId: "WE-3",
+    detail: "Mo-Fr: 18:00-22:00 · Sa/So: 18:00-22:00"
+  }
+];
+
+const isWeekendDay = (weekday: number) => weekday === 0 || weekday === 6;
+
+const getShiftIdForDay = (weekday: number, row: (typeof SHIFT_GRID_ROWS)[number]): CashierShiftId => {
+  return isWeekendDay(weekday) ? row.weekendShiftId : row.weekdayShiftId;
+};
 
 type FeedbackState = { type: "success" | "error"; message: string } | null;
 
@@ -67,14 +113,11 @@ export function EmployeeForm({ mode = "create", employee, onSuccess, onCancel }:
   const isEditMode = mode === "edit" && !!employee;
   const resolvedInitialValues = isEditMode && employee ? createValuesFromEmployee(employee) : createDefaultFormValues();
   const resolvedInitialWeekdays = resolvedInitialValues.availableWeekdays;
-  const resolvedInitialFixedDays = resolvedInitialValues.fixedCashierSlots.map((slot) => slot.weekday);
-  const resolvedInitialShiftId =
-    (resolvedInitialValues.fixedCashierSlots[0]?.shiftId as CashierShiftId | undefined) ?? "W-2";
+  const resolvedInitialFixedSlots = resolvedInitialValues.fixedCashierSlots.map((slot) => ({ ...slot }));
 
   const [formState, setFormState] = useState<CreateEmployeePayload>(resolvedInitialValues);
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>(resolvedInitialWeekdays);
-  const [fixedCashierDays, setFixedCashierDays] = useState<number[]>(resolvedInitialFixedDays);
-  const [fixedShiftId, setFixedShiftId] = useState<CashierShiftId>(resolvedInitialShiftId);
+  const [fixedCashierSlots, setFixedCashierSlots] = useState<FixedCashierSlot[]>(resolvedInitialFixedSlots);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const eligibleForFixedShift = formState.area === "KASSE" && formState.employmentType === "ANGESTELLTER";
@@ -82,9 +125,7 @@ export function EmployeeForm({ mode = "create", employee, onSuccess, onCancel }:
   const syncFormWithValues = (values: CreateEmployeePayload, resetFeedback = true) => {
     setFormState(values);
     setSelectedWeekdays(values.availableWeekdays);
-    setFixedCashierDays(values.fixedCashierSlots.map((slot) => slot.weekday));
-    const shiftId = (values.fixedCashierSlots[0]?.shiftId as CashierShiftId | undefined) ?? "W-2";
-    setFixedShiftId(shiftId);
+    setFixedCashierSlots(values.fixedCashierSlots.map((slot) => ({ ...slot })));
     if (resetFeedback) {
       setFeedback(null);
     }
@@ -101,7 +142,7 @@ export function EmployeeForm({ mode = "create", employee, onSuccess, onCancel }:
 
   useEffect(() => {
     if (!eligibleForFixedShift) {
-      setFixedCashierDays([]);
+      setFixedCashierSlots([]);
     }
   }, [eligibleForFixedShift]);
 
@@ -114,13 +155,19 @@ export function EmployeeForm({ mode = "create", employee, onSuccess, onCancel }:
     });
   };
 
-  const toggleFixedDay = (value: number) => {
-    setFixedCashierDays((prev) => {
-      if (prev.includes(value)) {
-        return prev.filter((day) => day !== value);
+  const toggleFixedSlot = (weekday: number, shiftId: CashierShiftId) => {
+    setFixedCashierSlots((prev) => {
+      const isSelected = prev.some((slot) => slot.weekday === weekday && slot.shiftId === shiftId);
+      if (isSelected) {
+        return prev.filter((slot) => !(slot.weekday === weekday && slot.shiftId === shiftId));
       }
-      return [...prev, value];
+      const withoutSameWeekday = prev.filter((slot) => slot.weekday !== weekday);
+      return [...withoutSameWeekday, { weekday, shiftId }];
     });
+  };
+
+  const isFixedSlotSelected = (weekday: number, shiftId: CashierShiftId) => {
+    return fixedCashierSlots.some((slot) => slot.weekday === weekday && slot.shiftId === shiftId);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -132,10 +179,7 @@ export function EmployeeForm({ mode = "create", employee, onSuccess, onCancel }:
       ...formState,
       monthlyHours: Number(formState.monthlyHours),
       availableWeekdays: selectedWeekdays,
-      fixedCashierSlots:
-        eligibleForFixedShift && fixedCashierDays.length
-          ? fixedCashierDays.map((weekday) => ({ weekday, shiftId: fixedShiftId }))
-          : []
+      fixedCashierSlots: eligibleForFixedShift ? fixedCashierSlots.map((slot) => ({ ...slot })) : []
     };
 
     if (!payload.availableWeekdays.length) {
@@ -298,47 +342,53 @@ export function EmployeeForm({ mode = "create", employee, onSuccess, onCancel }:
         </label>
 
         {eligibleForFixedShift && (
-          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-slate-800">Feste Kassenschichten</p>
-                <p className="text-xs text-slate-500">Nur für Angestellte in der Kasse.</p>
-              </div>
-              <select
-                className="rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-                value={fixedShiftId}
-                onChange={(event) => setFixedShiftId(event.target.value as CashierShiftId)}
-              >
-                {CASHIER_SHIFT_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+          <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <p className="text-sm font-medium text-slate-800">Feste Kassenschichten</p>
+              <p className="text-xs text-slate-500">
+                Wähle pro Tag eine fixe Schicht über das Raster. Nur für Angestellte in der Kasse.
+              </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {FIXED_SHIFT_WEEKDAY_OPTIONS.map((weekday) => (
-                <label
-                  key={weekday.value}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                    fixedCashierDays.includes(weekday.value)
-                      ? "border-brand-500 bg-brand-500/10 text-brand-700"
-                      : "border-slate-300 text-slate-600"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={fixedCashierDays.includes(weekday.value)}
-                    onChange={() => toggleFixedDay(weekday.value)}
-                  />
-                  {weekday.label}
-                </label>
+            <div className="space-y-2">
+              <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                {FIXED_SHIFT_WEEKDAY_OPTIONS.map((weekday) => (
+                  <span key={weekday.value}>{weekday.label}</span>
+                ))}
+              </div>
+              {SHIFT_GRID_ROWS.map((shiftRow) => (
+                <div key={shiftRow.id} className="grid grid-cols-7 gap-2">
+                  {FIXED_SHIFT_WEEKDAY_OPTIONS.map((weekday) => {
+                    const shiftId = getShiftIdForDay(weekday.value, shiftRow);
+                    const isSelected = isFixedSlotSelected(weekday.value, shiftId);
+                    return (
+                      <button
+                        key={`${shiftRow.id}-${weekday.value}`}
+                        type="button"
+                        className={`rounded-xl border px-2 py-3 text-center text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+                          isSelected
+                            ? "border-brand-500 bg-brand-500/10 text-brand-700 shadow-sm"
+                            : "border-slate-200 text-slate-500 hover:border-slate-300"
+                        }`}
+                        onClick={() => toggleFixedSlot(weekday.value, shiftId)}
+                        aria-pressed={isSelected}
+                      >
+                        {shiftRow.shortLabel}
+                      </button>
+                    );
+                  })}
+                </div>
               ))}
             </div>
+            <ul className="text-[11px] text-slate-500">
+              {SHIFT_GRID_ROWS.map((row) => (
+                <li key={row.id}>
+                  <span className="font-semibold text-slate-700">{row.label}:</span> {row.detail}
+                </li>
+              ))}
+            </ul>
             <p className="text-xs text-slate-500">
-              Beispiel: Mo, Di, Mi + Mittelschicht = feste Zuordnung zu diesen Schichten. Wochenend-Tage erfordern
-              zusätzlich die Wochenend-Checkbox oben.
+              Beispiel: Markiere Mo/Di/Fr in der Mittelschicht für feste Einsätze. Wochenend-Tage erfordern zusätzlich
+              die Wochenend-Checkbox oben.
             </p>
           </div>
         )}
