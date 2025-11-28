@@ -1,5 +1,29 @@
 import { EMPLOYEE_AREA, type EmployeeAreaValue } from "@/types";
 
+type ShiftTemplateDefinition = {
+  id: string;
+  label: string;
+  start: string;
+  end: string;
+  hours: number;
+};
+
+export const CASHIER_WEEKDAY_SHIFTS = [
+  { id: "W-1", label: "Frühdienst", start: "06:00", end: "13:00", hours: 7 },
+  { id: "W-2", label: "Mittelschicht", start: "13:00", end: "18:00", hours: 5 },
+  { id: "W-3", label: "Spätdienst", start: "18:00", end: "22:00", hours: 4 }
+] as const satisfies readonly ShiftTemplateDefinition[];
+
+export const CASHIER_WEEKEND_SHIFTS = [
+  { id: "WE-1", label: "Frühdienst", start: "07:00", end: "13:00", hours: 6 },
+  { id: "WE-2", label: "Mittelschicht", start: "13:00", end: "18:00", hours: 5 },
+  { id: "WE-3", label: "Spätdienst", start: "18:00", end: "22:00", hours: 4 }
+] as const satisfies readonly ShiftTemplateDefinition[];
+
+export type CashierShiftId =
+  | (typeof CASHIER_WEEKDAY_SHIFTS)[number]["id"]
+  | (typeof CASHIER_WEEKEND_SHIFTS)[number]["id"];
+
 export interface ShiftTemplate {
   id: CashierShiftId;
   label: string;
@@ -7,22 +31,6 @@ export interface ShiftTemplate {
   end: string;
   hours: number;
 }
-
-export const CASHIER_WEEKDAY_SHIFTS = [
-  { id: "W-1", label: "Frühdienst", start: "06:00", end: "13:00", hours: 7 },
-  { id: "W-2", label: "Mittelschicht", start: "13:00", end: "18:00", hours: 5 },
-  { id: "W-3", label: "Spätdienst", start: "18:00", end: "22:00", hours: 4 }
-] as const satisfies readonly ShiftTemplate[];
-
-export const CASHIER_WEEKEND_SHIFTS = [
-  { id: "WE-1", label: "Frühdienst", start: "07:00", end: "13:00", hours: 6 },
-  { id: "WE-2", label: "Mittelschicht", start: "13:00", end: "18:00", hours: 5 },
-  { id: "WE-3", label: "Spätdienst", start: "18:00", end: "22:00", hours: 4 }
-] as const satisfies readonly ShiftTemplate[];
-
-export type CashierShiftId =
-  | (typeof CASHIER_WEEKDAY_SHIFTS)[number]["id"]
-  | (typeof CASHIER_WEEKEND_SHIFTS)[number]["id"];
 
 export const CASHIER_SHIFT_IDS = [
   ...CASHIER_WEEKDAY_SHIFTS.map((shift) => shift.id),
