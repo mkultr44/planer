@@ -91,10 +91,10 @@ export function PlannerDashboard() {
 
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-2">
-          <EmployeeForm onCreated={fetchEmployees} />
+          <EmployeeForm onSuccess={fetchEmployees} />
         </div>
         <div className="lg:col-span-3 space-y-6">
-          <EmployeeList employees={employees} isLoading={isLoadingEmployees} />
+          <EmployeeList employees={employees} isLoading={isLoadingEmployees} onChange={fetchEmployees} />
           <div className="card">
             <div className="card-header flex flex-wrap items-center justify-between gap-3">
               <span>Einstellungen</span>

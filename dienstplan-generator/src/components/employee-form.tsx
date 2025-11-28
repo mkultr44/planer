@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CreateEmployeePayload, EmployeeAreaValue, EmploymentTypeValue } from "@/types";
+import type { CreateEmployeePayload, EmployeeAreaValue, EmployeeDto, EmploymentTypeValue } from "@/types";
 import { CASHIER_SHIFT_OPTIONS, type CashierShiftId } from "@/lib/shifts";
 
 const AREA_OPTIONS: { label: string; value: EmployeeAreaValue; description: string }[] = [
@@ -34,26 +34,70 @@ const FIXED_SHIFT_WEEKDAY_OPTIONS = [
   { label: "Sa", value: 6 }
 ];
 
+type FeedbackState = { type: "success" | "error"; message: string } | null;
+
+const createDefaultFormValues = (): CreateEmployeePayload => ({
+  name: "",
+  monthlyHours: 80,
+  area: "KASSE",
+  employmentType: "ANGESTELLTER",
+  availableWeekdays: [1, 2, 3, 4, 5],
+  weekendAvailability: false,
+  fixedCashierSlots: []
+});
+
+const createValuesFromEmployee = (employee: EmployeeDto): CreateEmployeePayload => ({
+  name: employee.name,
+  monthlyHours: employee.monthlyHours,
+  area: employee.area,
+  employmentType: employee.employmentType,
+  availableWeekdays: [...employee.availableWeekdays],
+  weekendAvailability: employee.weekendAvailability,
+  fixedCashierSlots: employee.fixedCashierSlots.map((slot) => ({ ...slot }))
+});
+
 interface Props {
-  onCreated?: () => void;
+  mode?: "create" | "edit";
+  employee?: EmployeeDto | null;
+  onSuccess?: (employee: EmployeeDto) => void;
+  onCancel?: () => void;
 }
 
-export function EmployeeForm({ onCreated }: Props) {
-  const [formState, setFormState] = useState<CreateEmployeePayload>({
-    name: "",
-    monthlyHours: 80,
-    area: "KASSE",
-    employmentType: "ANGESTELLTER",
-    availableWeekdays: [1, 2, 3, 4, 5],
-    weekendAvailability: false,
-    fixedCashierSlots: []
-  });
-  const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>(formState.availableWeekdays);
-  const [fixedCashierDays, setFixedCashierDays] = useState<number[]>([]);
-  const [fixedShiftId, setFixedShiftId] = useState<CashierShiftId>("W-2");
+export function EmployeeForm({ mode = "create", employee, onSuccess, onCancel }: Props) {
+  const isEditMode = mode === "edit" && !!employee;
+  const resolvedInitialValues = isEditMode && employee ? createValuesFromEmployee(employee) : createDefaultFormValues();
+  const resolvedInitialWeekdays = resolvedInitialValues.availableWeekdays;
+  const resolvedInitialFixedDays = resolvedInitialValues.fixedCashierSlots.map((slot) => slot.weekday);
+  const resolvedInitialShiftId =
+    (resolvedInitialValues.fixedCashierSlots[0]?.shiftId as CashierShiftId | undefined) ?? "W-2";
+
+  const [formState, setFormState] = useState<CreateEmployeePayload>(resolvedInitialValues);
+  const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>(resolvedInitialWeekdays);
+  const [fixedCashierDays, setFixedCashierDays] = useState<number[]>(resolvedInitialFixedDays);
+  const [fixedShiftId, setFixedShiftId] = useState<CashierShiftId>(resolvedInitialShiftId);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
   const eligibleForFixedShift = formState.area === "KASSE" && formState.employmentType === "ANGESTELLTER";
+
+  const syncFormWithValues = (values: CreateEmployeePayload, resetFeedback = true) => {
+    setFormState(values);
+    setSelectedWeekdays(values.availableWeekdays);
+    setFixedCashierDays(values.fixedCashierSlots.map((slot) => slot.weekday));
+    const shiftId = (values.fixedCashierSlots[0]?.shiftId as CashierShiftId | undefined) ?? "W-2";
+    setFixedShiftId(shiftId);
+    if (resetFeedback) {
+      setFeedback(null);
+    }
+  };
+
+  useEffect(() => {
+    if (isEditMode && employee) {
+      syncFormWithValues(createValuesFromEmployee(employee));
+    }
+    if (!isEditMode && mode === "create") {
+      syncFormWithValues(createDefaultFormValues());
+    }
+  }, [employee, isEditMode, mode]);
 
   useEffect(() => {
     if (!eligibleForFixedShift) {
@@ -100,24 +144,37 @@ export function EmployeeForm({ onCreated }: Props) {
       return;
     }
 
+    const endpoint = isEditMode ? `/api/employees/${employee?.id}` : "/api/employees";
+    const method = isEditMode ? "PATCH" : "POST";
+
     try {
-      const response = await fetch("/api/employees", {
-        method: "POST",
+      const response = await fetch(endpoint, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
         throw new Error(result?.message ?? "Speichern fehlgeschlagen");
       }
 
-      setFeedback({ type: "success", message: "Mitarbeiter:in wurde gespeichert." });
-      setFormState((prev) => ({ ...prev, name: "" }));
-      setSelectedWeekdays(payload.availableWeekdays);
-      setFixedCashierDays([]);
-      setFixedShiftId("W-2");
-      onCreated?.();
+      const result = (await response.json().catch(() => ({}))) as { data?: EmployeeDto };
+      const savedEmployee = result?.data;
+      if (!savedEmployee) {
+        throw new Error("Antwort vom Server ungültig.");
+      }
+
+      setFeedback({
+        type: "success",
+        message: isEditMode ? "Mitarbeiter:in wurde aktualisiert." : "Mitarbeiter:in wurde gespeichert."
+      });
+      onSuccess?.(savedEmployee);
+
+      if (isEditMode) {
+        syncFormWithValues(createValuesFromEmployee(savedEmployee), false);
+      } else {
+        syncFormWithValues(createDefaultFormValues(), false);
+      }
     } catch (error) {
       setFeedback({ type: "error", message: (error as Error).message });
     } finally {
@@ -127,7 +184,7 @@ export function EmployeeForm({ onCreated }: Props) {
 
   return (
     <form className="card flex flex-col gap-6" onSubmit={handleSubmit}>
-      <div className="card-header">Mitarbeiter anlegen</div>
+      <div className="card-header">{isEditMode ? "Mitarbeiter bearbeiten" : "Mitarbeiter anlegen"}</div>
       <div className="card-body flex flex-col gap-6">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
@@ -298,9 +355,14 @@ export function EmployeeForm({ onCreated }: Props) {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isEditMode && onCancel && (
+            <button className="btn-secondary" type="button" disabled={isSubmitting} onClick={onCancel}>
+              Abbrechen
+            </button>
+          )}
           <button className="btn-primary" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Speichern..." : "Mitarbeiter speichern"}
+            {isSubmitting ? (isEditMode ? "Speichert..." : "Speichern...") : isEditMode ? "Änderungen speichern" : "Mitarbeiter speichern"}
           </button>
           <p className="text-xs text-slate-500">
             Aushilfen werden im Kassenplan automatisch mit Pausen zwischen den Einsätzen verteilt.
