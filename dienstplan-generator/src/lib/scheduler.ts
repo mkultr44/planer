@@ -1,44 +1,25 @@
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { EMPLOYEE_AREA, EMPLOYMENT_TYPE, type EmployeeAreaValue, type EmploymentTypeValue } from "@/types";
+import {
+  EMPLOYEE_AREA,
+  EMPLOYMENT_TYPE,
+  type EmployeeAreaValue,
+  type EmploymentTypeValue,
+  type FixedCashierSlot
+} from "@/types";
+import {
+  AREA_LABELS,
+  CASHIER_WEEKDAY_SHIFTS,
+  CASHIER_WEEKEND_SHIFTS,
+  NON_CASHIER_AREAS,
+  getAreaShiftTemplate,
+  type CashierShiftId,
+  isCashierShiftId,
+  type ShiftTemplate
+} from "./shifts";
 import { createHolidaySet, isNRWHoliday } from "./holidays";
 
 const WEEKDAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"] as const;
-
-interface ShiftTemplate {
-  id: string;
-  label: string;
-  start: string;
-  end: string;
-  hours: number;
-}
-
-const WEEKDAY_SHIFTS: ShiftTemplate[] = [
-  { id: "W-1", label: "Frühdienst", start: "06:00", end: "13:00", hours: 7 },
-  { id: "W-2", label: "Mittelschicht", start: "13:00", end: "18:00", hours: 5 },
-  { id: "W-3", label: "Spätdienst", start: "18:00", end: "22:00", hours: 4 }
-];
-
-const WEEKEND_SHIFTS: ShiftTemplate[] = [
-  { id: "WE-1", label: "Frühdienst", start: "07:00", end: "13:00", hours: 6 },
-  { id: "WE-2", label: "Mittelschicht", start: "13:00", end: "18:00", hours: 5 },
-  { id: "WE-3", label: "Spätdienst", start: "18:00", end: "22:00", hours: 4 }
-];
-
-const AREA_LABELS: Record<Exclude<EmployeeAreaValue, typeof EMPLOYEE_AREA.KASSE>, string> = {
-  [EMPLOYEE_AREA.BISTRO]: "Bistro-Tagesdienst",
-  [EMPLOYEE_AREA.LAGER]: "Lager-Einsatz",
-  [EMPLOYEE_AREA.WERKSTATT]: "Werkstatt-Einsatz"
-};
-
-const NON_CASHIER_AREAS: Array<Exclude<EmployeeAreaValue, typeof EMPLOYEE_AREA.KASSE>> = [
-  EMPLOYEE_AREA.BISTRO,
-  EMPLOYEE_AREA.LAGER,
-  EMPLOYEE_AREA.WERKSTATT
-];
-
-const WORKDAY_AREA_HOURS = 8;
-const WEEKEND_AREA_HOURS = 6;
 
 export interface SchedulerEmployee {
   id: number;
@@ -48,6 +29,7 @@ export interface SchedulerEmployee {
   employmentType: EmploymentTypeValue;
   availableWeekdays: number[]; // 0 = Sonntag ... 6 = Samstag
   weekendAvailability: boolean;
+  fixedCashierSlots: FixedCashierSlot[];
 }
 
 interface MutableEmployee extends SchedulerEmployee {
@@ -123,6 +105,24 @@ const sanitizeWeekdays = (values: number[]): number[] => {
   return normalized;
 };
 
+const sanitizeFixedSlots = (slots: FixedCashierSlot[]): FixedCashierSlot[] => {
+  const normalized: FixedCashierSlot[] = [];
+  const seen = new Set<string>();
+  slots.forEach((slot) => {
+    const weekday = sanitizeWeekdays([slot.weekday])[0];
+    if (weekday === undefined || !isCashierShiftId(slot.shiftId)) {
+      return;
+    }
+    const shiftId = slot.shiftId as CashierShiftId;
+    const key = `${weekday}-${shiftId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      normalized.push({ weekday, shiftId });
+    }
+  });
+  return normalized;
+};
+
 export function generateSchedule(
   employees: SchedulerEmployee[],
   options?: GenerateScheduleOptions
@@ -136,6 +136,7 @@ export function generateSchedule(
   const mutableEmployees: MutableEmployee[] = employees.map((employee) => ({
     ...employee,
     availableWeekdays: sanitizeWeekdays(employee.availableWeekdays ?? []),
+    fixedCashierSlots: sanitizeFixedSlots(employee.fixedCashierSlots ?? []),
     remainingHours: employee.monthlyHours,
     lastCashierDay: null,
     lastAreaDay: null,
@@ -175,17 +176,26 @@ export function generateSchedule(
       shifts: []
     };
 
-    const cashierTemplates = weekendOrHoliday ? WEEKEND_SHIFTS : WEEKDAY_SHIFTS;
+    const cashierTemplates = weekendOrHoliday ? CASHIER_WEEKEND_SHIFTS : CASHIER_WEEKDAY_SHIFTS;
 
     cashierTemplates.forEach((template, index) => {
       summary.totalCashierShifts += 1;
-      const selection = selectCashierEmployee(mutableEmployees, {
+      const fixedSelection = selectFixedCashierEmployee(mutableEmployees, {
         dayNumber: day,
         weekdayIndex,
         shift: template,
         assignmentsToday,
         weekendOrHoliday
       });
+      const selection =
+        fixedSelection ??
+        selectCashierEmployee(mutableEmployees, {
+          dayNumber: day,
+          weekdayIndex,
+          shift: template,
+          assignmentsToday,
+          weekendOrHoliday
+        });
 
       if (selection) {
         const { employee } = selection;
@@ -202,7 +212,8 @@ export function generateSchedule(
             name: employee.name,
             employmentType: employee.employmentType
           },
-          status: "ASSIGNED"
+          status: "ASSIGNED",
+          note: fixedSelection ? "Feste Zuordnung" : undefined
         });
         summary.filledCashierShifts += 1;
         assignmentsToday.add(employee.id);
@@ -227,17 +238,19 @@ export function generateSchedule(
     });
 
     NON_CASHIER_AREAS.forEach((areaKey) => {
-      if (areaKey === EMPLOYEE_AREA.WERKSTATT && weekendOrHoliday) {
+      const template = getAreaShiftTemplate(areaKey, weekendOrHoliday);
+
+      if (template.closed) {
         scheduleDay.shifts.push({
           id: `${isoDate}-${areaKey}-closed`,
           kind: "AREA",
           area: areaKey,
-          label: AREA_LABELS[areaKey],
-          start: null,
-          end: null,
-          hours: 0,
+          label: template.label,
+          start: template.start,
+          end: template.end,
+          hours: template.hours,
           status: "CLOSED",
-          note: "Werkstatt ist am Wochenende/Feiertag geschlossen."
+          note: template.note
         });
         return;
       }
@@ -251,10 +264,10 @@ export function generateSchedule(
           id: `${isoDate}-${areaKey}-missing`,
           kind: "AREA",
           area: areaKey,
-          label: AREA_LABELS[areaKey],
-          start: null,
-          end: null,
-          hours: weekendOrHoliday ? WEEKEND_AREA_HOURS : WORKDAY_AREA_HOURS,
+          label: template.label,
+          start: template.start,
+          end: template.end,
+          hours: template.hours,
           status: "OPEN",
           note
         });
@@ -262,13 +275,12 @@ export function generateSchedule(
       }
 
       summary.totalAreaSlots += 1;
-      const slotHours = weekendOrHoliday ? WEEKEND_AREA_HOURS : WORKDAY_AREA_HOURS;
       const selection = selectAreaEmployee(mutableEmployees, {
         dayNumber: day,
         weekdayIndex,
         assignmentsToday,
         weekendOrHoliday,
-        slotHours,
+        slotHours: template.hours,
         area: areaKey
       });
 
@@ -278,10 +290,10 @@ export function generateSchedule(
           id: `${isoDate}-${areaKey}`,
           kind: "AREA",
           area: areaKey,
-          label: AREA_LABELS[areaKey],
-          start: null,
-          end: null,
-          hours: slotHours,
+          label: template.label,
+          start: template.start,
+          end: template.end,
+          hours: template.hours,
           employee: {
             id: employee.id,
             name: employee.name,
@@ -291,7 +303,7 @@ export function generateSchedule(
         });
         summary.filledAreaSlots += 1;
         assignmentsToday.add(employee.id);
-        employee.remainingHours -= slotHours;
+        employee.remainingHours -= template.hours;
         employee.lastAreaDay = day;
         employee.assignedAreaShifts += 1;
       } else {
@@ -303,10 +315,10 @@ export function generateSchedule(
           id: `${isoDate}-${areaKey}`,
           kind: "AREA",
           area: areaKey,
-          label: AREA_LABELS[areaKey],
-          start: null,
-          end: null,
-          hours: slotHours,
+          label: template.label,
+          start: template.start,
+          end: template.end,
+          hours: template.hours,
           status: "OPEN",
           note: reason
         });
@@ -355,6 +367,49 @@ interface CashierSelectionContext {
   shift: ShiftTemplate;
   assignmentsToday: Set<number>;
   weekendOrHoliday: boolean;
+}
+
+function selectFixedCashierEmployee(
+  employees: MutableEmployee[],
+  context: CashierSelectionContext
+) {
+  const fixedCandidates = employees.filter((employee) => {
+    if (employee.area !== EMPLOYEE_AREA.KASSE) {
+      return false;
+    }
+    if (employee.employmentType !== EMPLOYMENT_TYPE.ANGESTELLTER) {
+      return false;
+    }
+    if (employee.remainingHours < context.shift.hours) {
+      return false;
+    }
+    if (context.assignmentsToday.has(employee.id)) {
+      return false;
+    }
+    const matchesSlot = employee.fixedCashierSlots.some(
+      (slot) => slot.weekday === context.weekdayIndex && slot.shiftId === context.shift.id
+    );
+    if (!matchesSlot) {
+      return false;
+    }
+    if (context.weekendOrHoliday) {
+      return employee.weekendAvailability;
+    }
+    return employee.availableWeekdays.includes(context.weekdayIndex);
+  });
+
+  if (!fixedCandidates.length) {
+    return null;
+  }
+
+  const sorted = [...fixedCandidates].sort((a, b) => {
+    if (a.remainingHours !== b.remainingHours) {
+      return b.remainingHours - a.remainingHours;
+    }
+    return a.name.localeCompare(b.name, "de");
+  });
+
+  return { employee: sorted[0] };
 }
 
 function selectCashierEmployee(
