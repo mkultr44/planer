@@ -115,7 +115,7 @@ export function PlannerDashboard() {
             </div>
             {scheduleError && <div className="card-body text-sm text-rose-500">{scheduleError}</div>}
           </div>
-          <SchedulePreview schedule={schedule} isLoading={isGenerating && !schedule} />
+          <SchedulePreview schedule={schedule} isLoading={isGenerating && !schedule} employees={employees} />
         </div>
       </div>
     </div>

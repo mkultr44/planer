@@ -14,6 +14,11 @@ export const EMPLOYMENT_TYPE = {
 } as const;
 export type EmploymentTypeValue = (typeof EMPLOYMENT_TYPES)[number];
 
+export interface FixedCashierSlot {
+  weekday: number; // 0 = Sonntag ... 6 = Samstag
+  shiftId: string;
+}
+
 export const isEmployeeAreaValue = (value: unknown): value is EmployeeAreaValue => {
   return typeof value === "string" && (EMPLOYEE_AREAS as readonly string[]).includes(value);
 };
@@ -30,6 +35,7 @@ export interface EmployeeDto {
   employmentType: EmploymentTypeValue;
   availableWeekdays: number[];
   weekendAvailability: boolean;
+  fixedCashierSlots: FixedCashierSlot[];
   createdAt: string;
 }
 
@@ -40,6 +46,7 @@ export interface CreateEmployeePayload {
   employmentType: EmploymentTypeValue;
   availableWeekdays: number[];
   weekendAvailability: boolean;
+  fixedCashierSlots: FixedCashierSlot[];
 }
 
 export interface ServiceResponse<T> {
